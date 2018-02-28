@@ -49,7 +49,7 @@ Any other string will be typed letter by letter to the target window.
 ## Setup
 
 ```
-git clone https://github.com/asciimoo/scrapture
+git clone https://github.com/asciimoo/crapture
 cd scrapture
 virtualenv env
 source env/bin/activate
