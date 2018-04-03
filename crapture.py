@@ -41,7 +41,7 @@ def send_keys(script):
             K.press_keys(i)
         else:
             for c in i:
-                K.tap_key(c)
+                K.type_string(c)
                 sleep(DELAY)
 
 
