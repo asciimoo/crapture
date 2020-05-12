@@ -34,6 +34,7 @@ $ python crapture.py your.screenplay -o x.gif
 Crapture requires a screenplay file as input which describes the recording. This file is
 a simple text file with the following additions:
  - `{{ sleep N }}`: sleep N seconds (integers and floats are accepted)
+ - `{{ exec cmd arg1 arg2... }}`: executes a shell command (Example: `{{ exec echo "capturing finished" }}`)
  - `{{ list of keys }}`: press keys combinations. (Example: `{{ control l }}` clears screen in terminal)
 
 Any other string will be typed letter by letter to the target window.
