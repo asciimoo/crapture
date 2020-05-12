@@ -1,44 +1,70 @@
 import argparse
 import re
+import shlex
 import threading
 
 from subprocess import check_output
 from sys import argv
 from time import sleep
+from traceback import print_exc
+try:
+    from shutil import which
+except:
+    from distutils.spawn import find_executable as which
 
-from pykeyboard import PyKeyboard
+try:
+    from pykeyboard import PyKeyboard
+except:
+    print('[!] Missing dependency\nRun `pip install -r requirements.txt` to install missing dependencies')
+    exit(1)
 
 
 DELAY = 0.10
+INITIAL_DELAY = 1.0
 K = PyKeyboard()
 
 
+class CMD():
+    def __init__(self, args):
+        self.args = args
+
+    def evaluate(self):
+        print("executing", ' '.join(self.args))
+        print(str(check_output(self.args)))
+
+
 def record(script, output):
+    if not which("byzanz-record"):
+        raise Exception('[!] Missing command: byzanz-record. Please install it to be able to record')
+    if not which("xwininfo"):
+        raise Exception('[!] Missing command: xwininfo. Please install it to be able to record')
     h = w = x = y = None
     dur = duration(script)
     print('[Select a window to start capture]')
     print('[Capture duration: {0} sec]'.format(dur))
     for line in check_output(['xwininfo']).splitlines():
-        if 'Absolute upper-left X' in line:
+        if b'Absolute upper-left X' in line:
             x = line.split()[-1]
-        elif 'Absolute upper-left Y' in line:
+        elif b'Absolute upper-left Y' in line:
             y = line.split()[-1]
-        elif 'Width:' in line:
+        elif b'Width:' in line:
             w = line.split()[-1]
-        elif 'Height:' in line:
+        elif b'Height:' in line:
             h = line.split()[-1]
     sleep(1)
     threading.Thread(target=send_keys, args=(script,)).start()
-    check_output(['byzanz-record', '-x', x, '-y', y, '-w', w, '-h', h, '--delay=2', '-d', str(int(dur)), output])
+    check_output(['byzanz-record', '-x', x, '-y', y, '-w', w, '-h', h, '--delay='+(0.5+INITIAL_DELAY), '-d', str(int(dur)), output])
 
 
 def send_keys(script):
-    sleep(1)
+    sleep(INITIAL_DELAY)
     for i in script:
         if isinstance(i, float):
             sleep(i)
         elif isinstance(i, list):
             K.press_keys(i)
+        elif isinstance(i, CMD):
+            i.evaluate()
         else:
             for c in i:
                 K.type_string(c)
@@ -65,17 +91,21 @@ def parse_keys(keys):
     return ret
 
 
-def parse_script(script_text):
+def parse_script(script_file):
+    with open(script_file) as infile:
+        script_text = infile.read().rstrip('\n')
     script = []
     for piece in re.split("({{[^}]+}}|\n)", script_text, re.U | re.M):
         if piece.startswith('{{') and piece.endswith('}}'):
-            args = piece[2:-2].strip().split()
+            args = shlex.split(piece[2:-2].strip())
             if not args:
                 raise Exception("missing arguments")
             if args[0] == 'sleep':
-                if len(args) < 2:
+                if len(args) != 2:
                     raise Exception("missing argument for sleep")
                 script.append(float(args[1]))
+            elif args[0] == 'exec':
+                script.append(CMD(args[1:]))
             else:
                 script.append(parse_keys(args))
         else:
@@ -87,23 +117,34 @@ def parse_script(script_text):
 
 
 def crapture(script_file, output):
-    with open(script_file) as infile:
-        script = parse_script(infile.read().rstrip('\n'))
+    try:
+        script = parse_script(script_file)
         record(script, output)
+    except Exception as e:
+        print('[!] Error', e)
+        print_exc()
+        exit(2)
+
 
 
 def main():
-    global DELAY
+    global DELAY, INITIAL_DELAY
     parser = argparse.ArgumentParser('Crapture - hackish screen capturing')
     parser.add_argument('-d', '--duration', help='print the duration of the script', action="store_true")
-    parser.add_argument('-t', '--typing-delay', help='Delay between typing two letters', default=DELAY)
+    parser.add_argument('-t', '--typing-delay', help='Delay between typing two letters (float, in seconds)', default=DELAY)
     parser.add_argument('-o', '--output', help='Output gif name', default='craptured.gif')
+    parser.add_argument('-n', '--norecord', help='Do not record', action="store_true")
+    parser.add_argument('-i', '--initial-delay', help='Initial delay before starting capture (float, in seconds)', default=INITIAL_DELAY)
     parser.add_argument('script', help='script of the recording')
     args = parser.parse_args()
     script = args.script
     DELAY = args.typing_delay
+    INITIAL_DELAY = args.initial_delay
     if args.duration:
         print('Duration of the script is: {0}s'.format(duration(script)))
+    elif args.norecord:
+        input("[!] Press enter to start capturing in %f seconds\n" % INITIAL_DELAY)
+        send_keys(parse_script(script))
     else:
         crapture(script, args.output)
 
