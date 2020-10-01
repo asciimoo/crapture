@@ -99,10 +99,10 @@ def parse_script(script_file):
         if piece.startswith('{{') and piece.endswith('}}'):
             args = shlex.split(piece[2:-2].strip())
             if not args:
-                raise Exception("missing arguments")
+                raise Exception("Missing arguments")
             if args[0] == 'sleep':
                 if len(args) != 2:
-                    raise Exception("missing argument for sleep")
+                    raise Exception("Missing argument for sleep")
                 script.append(float(args[1]))
             elif args[0] == 'exec':
                 script.append(CMD(args[1:]))
