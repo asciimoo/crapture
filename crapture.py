@@ -34,8 +34,8 @@ class CMD():
 
 
 def record(script, output):
-    if not which("byzanz-record"):
-        raise Exception('[!] Missing command: byzanz-record. Please install it to be able to record')
+    if not which("ffmpeg"):
+        raise Exception('[!] Missing command: ffmpeg. Please install it to be able to record')
     if not which("xwininfo"):
         raise Exception('[!] Missing command: xwininfo. Please install it to be able to record')
     h = w = x = y = None
@@ -53,7 +53,7 @@ def record(script, output):
             h = line.split()[-1]
     sleep(1)
     threading.Thread(target=send_keys, args=(script,)).start()
-    check_output(['byzanz-record', '-x', x, '-y', y, '-w', w, '-h', h, '--delay='+(0.5+INITIAL_DELAY), '-d', str(int(dur)), output])
+    check_output(['ffmpeg', '-video_size', f'{int(w)}x{int(h)}', '-f', 'x11grab', '-i', f':0.0+{int(x)},{int(y)}', '-preset', 'ultrafast',  '-t', str(int(dur)), output])
 
 
 def send_keys(script):
