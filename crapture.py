@@ -3,7 +3,7 @@ import re
 import shlex
 import threading
 
-from subprocess import check_output
+from subprocess import check_output, Popen
 from sys import argv
 from time import sleep
 from traceback import print_exc
@@ -20,17 +20,25 @@ except:
 
 
 DELAY = 0.10
-INITIAL_DELAY = 1.0
+INITIAL_DELAY = 1
+DURATION = 0.0
 K = PyKeyboard()
 
 
 class CMD():
-    def __init__(self, args):
+    def __init__(self, args, method):
         self.args = args
+        self.method = method
 
     def evaluate(self):
+        for i, arg in enumerate(self.args):
+            if arg == '$$DURATION':
+                self.args[i] = str(DURATION)
         print("executing", ' '.join(self.args))
-        print(str(check_output(self.args)))
+        if self.method == 'exec':
+            print(str(check_output(self.args)))
+        if self.method == 'fork':
+            Popen(self.args)
 
 
 def record(script, output):
@@ -53,7 +61,9 @@ def record(script, output):
             h = line.split()[-1]
     sleep(1)
     threading.Thread(target=send_keys, args=(script,)).start()
-    check_output(['byzanz-record', '-x', x, '-y', y, '-w', w, '-h', h, '--delay='+(0.5+INITIAL_DELAY), '-d', str(int(dur)), output])
+    cmd = ['byzanz-record', '-x', x, '-y', y, '-w', w, '-h', h, '--delay='+str(1+int(INITIAL_DELAY)), '-d', str(int(dur)), output]
+    print("Executing", ' '.join(map(lambda x: x.decode("utf-8") if type(x) == bytes else x, cmd)))
+    check_output(cmd)
 
 
 def send_keys(script):
@@ -87,6 +97,7 @@ def parse_keys(keys):
         if len(key) == 1:
             ret.append(key)
         else:
+            key = key.replace("ctrl", "control")
             ret.append(getattr(K, '{0}_key'.format(key)))
     return ret
 
@@ -95,7 +106,7 @@ def parse_script(script_file):
     with open(script_file) as infile:
         script_text = infile.read().rstrip('\n')
     script = []
-    for piece in re.split("({{[^}]+}}|\n)", script_text, re.U | re.M):
+    for piece in re.split("({{[^}]+}}|\n)", script_text, flags=re.U | re.M):
         if piece.startswith('{{') and piece.endswith('}}'):
             args = shlex.split(piece[2:-2].strip())
             if not args:
@@ -104,10 +115,14 @@ def parse_script(script_file):
                 if len(args) != 2:
                     raise Exception("missing argument for sleep")
                 script.append(float(args[1]))
-            elif args[0] == 'exec':
-                script.append(CMD(args[1:]))
+            elif args[0] in ('exec', 'fork'):
+                script.append(CMD(args[1:], args[0]))
             else:
-                script.append(parse_keys(args))
+                try:
+                    script.append(parse_keys(args))
+                except:
+                    print('[!] Failed to parse %r' % piece)
+                    exit(3)
         else:
             if piece == '\n':
                 script.append([K.enter_key])
@@ -116,9 +131,8 @@ def parse_script(script_file):
     return script
 
 
-def crapture(script_file, output):
+def crapture(script, output):
     try:
-        script = parse_script(script_file)
         record(script, output)
     except Exception as e:
         print('[!] Error', e)
@@ -128,23 +142,25 @@ def crapture(script_file, output):
 
 
 def main():
-    global DELAY, INITIAL_DELAY
+    global DELAY, INITIAL_DELAY, DURATION
     parser = argparse.ArgumentParser('Crapture - hackish screen capturing')
     parser.add_argument('-d', '--duration', help='print the duration of the script', action="store_true")
-    parser.add_argument('-t', '--typing-delay', help='Delay between typing two letters (float, in seconds)', default=DELAY)
+    parser.add_argument('-t', '--typing-delay', help='Delay between typing two letters (float, in seconds)', default=DELAY, type=float)
     parser.add_argument('-o', '--output', help='Output gif name', default='craptured.gif')
     parser.add_argument('-n', '--norecord', help='Do not record', action="store_true")
-    parser.add_argument('-i', '--initial-delay', help='Initial delay before starting capture (float, in seconds)', default=INITIAL_DELAY)
+    parser.add_argument('-i', '--initial-delay', help='Initial delay before starting capture (int, in seconds)', default=INITIAL_DELAY, type=int)
     parser.add_argument('script', help='script of the recording')
     args = parser.parse_args()
-    script = args.script
+    script = parse_script(args.script)
     DELAY = args.typing_delay
-    INITIAL_DELAY = args.initial_delay
+    INITIAL_DELAY = int(args.initial_delay)
+    DURATION = duration(script)
+    print(DURATION)
     if args.duration:
-        print('Duration of the script is: {0}s'.format(duration(script)))
+        print('Duration of the script is: {0}s'.format(DURATION))
     elif args.norecord:
         input("[!] Press enter to start capturing in %f seconds\n" % INITIAL_DELAY)
-        send_keys(parse_script(script))
+        send_keys(script)
     else:
         crapture(script, args.output)
 
